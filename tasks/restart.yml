@@ -1,0 +1,20 @@
+---
+
+- name: restart the os
+  command: /sbin/shutdown -r +1
+  async: 0
+  poll: 0
+  become: yes
+  ignore_errors: yes
+
+- name: sleep for 1 minute
+  wait_for: timeout=90
+  delegate_to: localhost
+
+- name: wait for os to come back up
+  wait_for_connection:
+
+# The UI takes a bit to load. Just having an SSH connection isn't enough.
+- name: sleep for 1 minute
+  wait_for: timeout=60
+  delegate_to: localhost

@@ -1,0 +1,157 @@
+---
+# tasks file for jenkins-node-jnlp
+
+- name: create user
+  become: yes
+  vars:
+    # For whatever reason, passing a vaulted variable into the password_hash filter causes ansible to throw an error.
+    # You must assign the vaulted variable to another variable first, then it will work properly with password_hash.
+    unvaulted_jenkins_node_user_password: "{{ jenkins_node_user_password }}"
+  user:
+    name: "{{ jenkins_node_user }}"
+    # I'm not sure, but setting this seems to bork the auto login of the user. I couldn't login
+    # shell: /bin/bash
+    generate_ssh_key: yes
+    ssh_key_bits: 4096
+    password: "{{ unvaulted_jenkins_node_user_password | password_hash('sha512') }}"
+
+- name: enable auto login
+  become: yes
+  blockinfile:
+    path: /etc/gdm/custom.conf
+    insertafter: "\\[daemon\\]"
+    block: |
+      AutomaticLoginEnable=True
+      AutomaticLogin={{ jenkins_node_user }}
+  register: result_auto_login_config
+
+- name: create the autostart directory
+  become: yes
+  file:
+    state: directory
+    path: /home/{{ jenkins_node_user }}/.config/autostart
+    owner: "{{ jenkins_node_user }}"
+    group: "{{ jenkins_node_user }}"
+    mode: 0775
+
+- name: copy file which runs login.sh upon login
+  become: yes
+  copy:
+    src: login.desktop
+    dest: /home/{{ jenkins_node_user }}/.config/autostart/login.desktop
+    mode: 0744
+    owner: "{{ jenkins_node_user }}"
+    group: "{{ jenkins_node_user }}"
+  register: result_auto_login_script
+
+- name: create folder for workspaces
+  become: yes
+  file:
+    path: "{{ jenkins_node_path }}"
+    owner: "{{ jenkins_node_user }}"
+    group: "{{ jenkins_node_user }}"
+    mode: 0774
+    state: directory
+
+- name: download the agent jar
+  become: yes
+  get_url:
+    url: "{{ jenkins_node_master_url }}/jnlpJars/agent.jar"
+    dest: "{{ jenkins_node_path }}/agent.jar"
+    owner: "{{ jenkins_node_user }}"
+    group: "{{ jenkins_node_user }}"
+    mode: 0744
+  register: result_download_agent_jar
+
+- name: install Java OpenJDK {{ jenkins_node_java_openjdk_version }}
+  become: yes
+  yum:
+    name: java-{{ jenkins_node_java_openjdk_version }}-openjdk-devel
+    state: latest
+
+- name: install python-jenkins
+  become: yes
+  pip:
+    name: python-jenkins
+    state: latest
+
+- name: copy node creation script
+  become: yes
+  copy:
+    src: create_jenkins_node_jnlp.py
+    dest: "{{ jenkins_node_path }}/create_jenkins_node_jnlp.py"
+    owner: "{{ jenkins_node_user }}"
+    group: "{{ jenkins_node_user }}"
+    mode: 0744
+
+- name: copy modify certifi script
+  become: yes
+  copy:
+    src: modify_certifi.py
+    dest: "{{ jenkins_node_path }}/modify_certifi.py"
+    owner: "{{ jenkins_node_user }}"
+    group: "{{ jenkins_node_user }}"
+    mode: 0755
+
+- name: modify certifi if needed
+  become: yes
+  command: python {{ jenkins_node_path }}/modify_certifi.py "{{ jenkins_node_master_url }}" "{{ jenkins_node_master_ca_cert }}"
+
+- name: add the node config to the jenkins master
+  become_user: "{{ jenkins_node_user }}"
+  become: yes
+  # To run this script, the user provided has to have Administrator rights in the Jenkins instance because it runs the Script Console.
+  # See https://support.cloudbees.com/hc/en-us/articles/222520647-How-to-find-slave-secret-key-
+  command: python {{ jenkins_node_path }}/create_jenkins_node_jnlp.py "{{ jenkins_node_master_url }}" "{{ jenkins_node_master_user }}" "{{ jenkins_node_master_password }}" "{{ jenkins_node_name }}" "{{ jenkins_node_description }}" "{{ jenkins_node_labels }}" "{{ jenkins_node_path }}/node_secret.txt" "--num-executors={{ jenkins_node_executors }}" "--path={{ jenkins_node_path }}"
+  # As of 2017-10-2, Ansible doesn't keep track what values were vaulted. Without no_log, an error would
+  # cause the command to be displayed, which is not desirable.
+  # 2019-12-02: You have two options. Use 'no_log: yes' or use a Jenkins credential object so Jenkins masks the output. I have opted for Jenkins to mask the output
+  # as this is a command that fails often, and I'm tired of having to run the command by hand and removing no_log so I can see the output.
+
+- name: fetch the node secret from the remote
+  become: yes
+  fetch:
+    src: "{{ jenkins_node_path }}/node_secret.txt"
+    dest: /tmp/fetch-{{ inventory_hostname }}/
+    flat: yes
+
+- name: get the node secret
+  set_fact:
+    jenkins_node_secret: "{{ lookup('file', '/tmp/fetch-{{ inventory_hostname }}/node_secret.txt').strip() }}"
+  no_log: yes
+
+- name: copy login.sh
+  become: yes
+  template:
+    src: login.sh
+    dest: /home/{{ jenkins_node_user }}/login.sh
+    mode: 0700
+    owner: "{{ jenkins_node_user }}"
+    group: "{{ jenkins_node_user }}"
+  register: result_copy_login
+
+- name: remove the node secret from localhost
+  file:
+    state: absent
+    path: /tmp/fetch-{{ inventory_hostname }}/node_secret.txt
+  delegate_to: localhost
+
+# Restart if any of the above pertinent tasks changed.
+- include_tasks: restart.yml
+  when: result_copy_login.changed or result_download_agent_jar.changed or result_auto_login_config.changed or result_auto_login_script.changed
+
+- name: copy node verify script
+  become: yes
+  copy:
+    src: verify_jenkins_node_jnlp.py
+    dest: "{{ jenkins_node_path }}/verify_jenkins_node_jnlp.py"
+    owner: "{{ jenkins_node_user }}"
+    group: "{{ jenkins_node_user }}"
+    mode: 0744
+
+- name: verify that the node is connected
+  become: yes
+  become_user: "{{ jenkins_node_user }}"
+  command: python {{ jenkins_node_path }}/verify_jenkins_node_jnlp.py "{{ jenkins_node_master_url }}" "{{ jenkins_node_master_user }}" "{{ jenkins_node_master_password }}" "{{ jenkins_node_name }}"
+  # 2019-12-02: You have two options. Use 'no_log: yes' or use a Jenkins credential object so Jenkins masks the output. I have opted for Jenkins to mask the output
+  # as this is a command that fails often, and I'm tired of having to run the command by hand and removing no_log so I can see the output.

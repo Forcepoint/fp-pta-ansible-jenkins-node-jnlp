@@ -1,0 +1,9 @@
+#!/usr/bin/env xdg-open
+[Desktop Entry]
+Name=login
+GenericName=login
+Comment=Things to do upon login.
+Exec=/home/jenkins/login.sh
+Terminal=false
+Type=Application
+X-GNOME-Autostart-enabled=true
