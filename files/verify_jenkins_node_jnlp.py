@@ -1,9 +1,7 @@
 """
 Author: Jeremy Cornett
 Date: 2017-09-26
-Purpose: Create/reconfigure a Jenkins node using desired SSH connection defaults. The approach in code is to conform
-with a desired state approach (i.e. rerunning this script won't hurt anything).
-http://python-jenkins.readthedocs.io/en/latest/index.html
+Purpose: Verify that the Jenkins node is actually connected.
 """
 
 import argparse
