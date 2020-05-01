@@ -63,11 +63,14 @@
     mode: 0744
   register: result_download_agent_jar
 
-- name: install openjdk{{ jenkins_node_openjdk_major_version }} {{ jenkins_node_openjdk_full_version }}
+- name: install openjdk{{ jenkins_node_openjdk_major_version }} latest
   become: yes
   yum:
+    # https://www.digitalocean.com/community/tutorials/how-to-install-java-on-centos-and-fedora
+    # To install the JDK, you have to install java-###-openjdk-devel. Without the devel, you just get the JRE,
+    # despite the VERY misleading name.
     name: "java-{{ jenkins_node_openjdk_major_version }}-openjdk-devel"
-    state: {{ jenkins_node_openjdk_full_version }}
+    state: latest
   when: jenkins_node_openjdk_full_version == "latest"
 
 # https://access.redhat.com/solutions/98873
