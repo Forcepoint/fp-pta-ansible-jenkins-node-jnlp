@@ -123,6 +123,12 @@
     group: "{{ jenkins_node_user }}"
     mode: 0744
 
+- name: install certifi
+  become: yes
+  pip:
+    name: certifi
+    state: latest
+
 - name: copy modify certifi script
   become: yes
   copy:
