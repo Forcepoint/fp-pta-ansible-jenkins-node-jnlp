@@ -5,7 +5,8 @@ jenkins_node_name: "{{ inventory_hostname }}"
 jenkins_node_description: ""
 jenkins_node_executors: 1
 jenkins_node_labels: "{{ inventory_hostname }}"
-jenkins_node_java_openjdk_version: 1.8.0
 jenkins_node_user: "jenkins"
 jenkins_node_path: "/home/{{ jenkins_node_user }}/node"
 jenkins_node_master_ca_cert: ""
+jenkins_node_openjdk_major_version: "11"
+jenkins_node_openjdk_full_version: "latest"
