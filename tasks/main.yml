@@ -63,6 +63,14 @@
     mode: 0744
   register: result_download_agent_jar
 
+# Other roles may install other versions of Java. This makes the default java executable point to the desired one here.
+- name: switch to java {{ jenkins_node_openjdk_major_version }}
+  become: yes
+  alternatives:
+    name: java
+    link: /usr/bin/java
+    path: /usr/lib/jvm/jre-{{ jenkins_node_openjdk_major_version }}-openjdk/bin/java
+
 - name: install openjdk{{ jenkins_node_openjdk_major_version }} latest
   become: yes
   yum:
