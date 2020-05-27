@@ -89,6 +89,7 @@
     path: /etc/yum/pluginconf.d/versionlock.list
     state: absent
     line: "1:java-{{ jenkins_node_openjdk_major_version }}-openjdk-*"
+  when: jenkins_node_openjdk_full_version != "latest"
 
 - name: install locked java version
   become: yes
@@ -107,6 +108,7 @@
     path: /etc/yum/pluginconf.d/versionlock.list
     state: present
     line: "1:java-{{ jenkins_node_openjdk_major_version }}-openjdk-*"
+  when: jenkins_node_openjdk_full_version != "latest"
 
 # Other roles may install other versions of Java. This makes the default java executable point to the desired one here.
 - name: switch to java {{ jenkins_node_openjdk_major_version }}
