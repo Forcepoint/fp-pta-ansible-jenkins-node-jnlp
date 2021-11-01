@@ -15,6 +15,11 @@
     ssh_key_bits: 4096
     password: "{{ unvaulted_jenkins_node_user_password | password_hash('sha512') }}"
 
+- name: enable git-lfs
+  become: yes
+  become_user: "{{ jenkins_node_user }}"
+  ansible.builtin.shell: git lfs install
+
 - name: enable auto login
   become: yes
   blockinfile:
