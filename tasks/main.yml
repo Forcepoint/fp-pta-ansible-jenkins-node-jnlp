@@ -39,6 +39,13 @@
     group: "{{ jenkins_node_user }}"
     mode: 0775
 
+- name: install xdg-utils for screensaver lock
+  become: yes
+  ansible.builtin.dnf:
+    name: xdg-utils
+    state: latest
+  when: ansible_distribution == "CentOS" and ansible_distribution_major_version > '7'
+
 - name: copy file which runs login.sh upon login
   become: yes
   ansible.builtin.copy:
