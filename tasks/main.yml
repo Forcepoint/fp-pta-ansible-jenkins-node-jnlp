@@ -129,14 +129,25 @@
     name: python-jenkins
     state: latest
 
-- name: copy node creation script
+- name: copy node creation script (py27)
   become: yes
   ansible.builtin.copy:
-    src: create_jenkins_node_jnlp.py
+    src: create_jenkins_node_jnlp_py27.py
     dest: "{{ jenkins_node_path }}/create_jenkins_node_jnlp.py"
     owner: "{{ jenkins_node_user }}"
     group: "{{ jenkins_node_user }}"
     mode: 0744
+  when: ansible_distribution == "CentOS" and ansible_distribution_major_version <= '7'
+
+- name: copy node creation script (py3)
+  become: yes
+  ansible.builtin.copy:
+    src: create_jenkins_node_jnlp_py3.py
+    dest: "{{ jenkins_node_path }}/create_jenkins_node_jnlp.py"
+    owner: "{{ jenkins_node_user }}"
+    group: "{{ jenkins_node_user }}"
+    mode: 0744
+  when: ansible_distribution == "CentOS" and ansible_distribution_major_version > '7'
 
 - name: install certifi
   become: yes
@@ -158,15 +169,11 @@
   ansible.builtin.command: python {{ jenkins_node_path }}/modify_certifi.py "{{ jenkins_node_master_url }}" "{{ jenkins_node_master_ca_cert }}"
 
 - name: add the node config to the jenkins master
-  become_user: "{{ jenkins_node_user }}"
   become: yes
+  become_user: "{{ jenkins_node_user }}"
   # To run this script, the user provided has to have Administrator rights in the Jenkins instance because it runs the Script Console.
   # See https://support.cloudbees.com/hc/en-us/articles/222520647-How-to-find-slave-secret-key-
-  ansible.builtin.command: python {{ jenkins_node_path }}/create_jenkins_node_jnlp.py "{{ jenkins_node_master_url }}" "{{ jenkins_node_master_user }}" "{{ jenkins_node_master_password }}" "{{ jenkins_node_name }}" "{{ jenkins_node_description }}" "{{ jenkins_node_labels }}" "{{ jenkins_node_path }}/node_secret.txt" "--num-executors={{ jenkins_node_executors }}" "--path={{ jenkins_node_path }}"
-  # As of 2017-10-2, Ansible doesn't keep track what values were vaulted. Without no_log, an error would
-  # cause the command to be displayed, which is not desirable.
-  # 2019-12-02: You have two options. Use 'no_log: yes' or use a Jenkins credential object so Jenkins masks the output. I have opted for Jenkins to mask the output
-  # as this is a command that fails often, and I'm tired of having to run the command by hand and removing no_log so I can see the output.
+  ansible.builtin.command: python {{ jenkins_node_path }}/create_jenkins_node_jnlp.py "{{ jenkins_node_master_url }}" "{{ jenkins_node_master_user }}" "{{ jenkins_node_master_password }}" "{{ jenkins_node_name }}" "{{ jenkins_node_description }}" "{{ jenkins_node_labels }}" "{{ jenkins_node_path }}/node_secret.txt" "--num-executors={{ jenkins_node_executors }}" "--path={{ jenkins_node_path }}" "-v"
 
 - name: fetch the node secret from the remote
   become: yes
