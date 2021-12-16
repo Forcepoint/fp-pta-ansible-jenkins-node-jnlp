@@ -218,5 +218,3 @@
 - name: verify that the node is connected
   become: yes
   ansible.builtin.command: python {{ jenkins_node_path }}/verify_jenkins_node_jnlp.py "{{ jenkins_node_master_url }}" "{{ jenkins_node_master_user }}" "{{ jenkins_node_master_password }}" "{{ jenkins_node_name }}"
-  # 2019-12-02: You have two options. Use 'no_log: yes' or use a Jenkins credential object so Jenkins masks the output. I have opted for Jenkins to mask the output
-  # as this is a command that fails often, and I'm tired of having to run the command by hand and removing no_log so I can see the output.
