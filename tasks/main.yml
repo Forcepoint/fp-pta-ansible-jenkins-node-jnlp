@@ -7,7 +7,7 @@
     # For whatever reason, passing a vaulted variable into the password_hash filter causes ansible to throw an error.
     # You must assign the vaulted variable to another variable first, then it will work properly with password_hash.
     unvaulted_jenkins_node_user_password: "{{ jenkins_node_user_password }}"
-  user:
+  ansible.builtin.user:
     name: "{{ jenkins_node_user }}"
     # I'm not sure, but setting this seems to bork the auto login of the user. I couldn't login
     # shell: /bin/bash
@@ -22,7 +22,7 @@
 
 - name: enable auto login
   become: yes
-  blockinfile:
+  ansible.builtin.blockinfile:
     path: /etc/gdm/custom.conf
     insertafter: "\\[daemon\\]"
     block: |
@@ -32,16 +32,23 @@
 
 - name: create the autostart directory
   become: yes
-  file:
+  ansible.builtin.file:
     state: directory
     path: /home/{{ jenkins_node_user }}/.config/autostart
     owner: "{{ jenkins_node_user }}"
     group: "{{ jenkins_node_user }}"
     mode: 0775
 
+- name: install xdg-utils for screensaver lock
+  become: yes
+  ansible.builtin.dnf:
+    name: xdg-utils
+    state: latest
+  when: ansible_distribution == "CentOS" and ansible_distribution_major_version > '7'
+
 - name: copy file which runs login.sh upon login
   become: yes
-  copy:
+  ansible.builtin.copy:
     src: login.desktop
     dest: /home/{{ jenkins_node_user }}/.config/autostart/login.desktop
     mode: 0744
@@ -51,7 +58,7 @@
 
 - name: create folder for workspaces
   become: yes
-  file:
+  ansible.builtin.file:
     path: "{{ jenkins_node_path }}"
     owner: "{{ jenkins_node_user }}"
     group: "{{ jenkins_node_user }}"
@@ -60,7 +67,7 @@
 
 - name: download the agent jar
   become: yes
-  get_url:
+  ansible.builtin.get_url:
     url: "{{ jenkins_node_master_url }}/jnlpJars/agent.jar"
     dest: "{{ jenkins_node_path }}/agent.jar"
     owner: "{{ jenkins_node_user }}"
@@ -70,7 +77,7 @@
 
 - name: install openjdk{{ jenkins_node_openjdk_major_version }} latest
   become: yes
-  yum:
+  ansible.builtin.yum:
     # https://www.digitalocean.com/community/tutorials/how-to-install-java-on-centos-and-fedora
     # To install the JDK, you have to install java-###-openjdk-devel. Without the devel, you just get the JRE,
     # despite the VERY misleading name.
@@ -81,7 +88,7 @@
 # https://access.redhat.com/solutions/98873
 - name: install versionlock
   become: yes
-  yum:
+  ansible.builtin.yum:
     name: yum-plugin-versionlock
     state: latest
   when: jenkins_node_openjdk_full_version != "latest"
@@ -90,7 +97,7 @@
 # The version lock is needed soley so a system wide yum update won't change the version of java.
 - name: remove the version lock
   become: yes
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: /etc/yum/pluginconf.d/versionlock.list
     state: absent
     line: "1:java-{{ jenkins_node_openjdk_major_version }}-openjdk-*"
@@ -98,7 +105,7 @@
 
 - name: install locked java version
   become: yes
-  yum:
+  ansible.builtin.yum:
     name:
       - "java-{{ jenkins_node_openjdk_major_version }}-openjdk-{{ jenkins_node_openjdk_full_version }}"
       - "java-{{ jenkins_node_openjdk_major_version }}-openjdk-headless-{{ jenkins_node_openjdk_full_version }}"
@@ -109,7 +116,7 @@
 
 - name: add the version lock back in
   become: yes
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: /etc/yum/pluginconf.d/versionlock.list
     state: present
     line: "1:java-{{ jenkins_node_openjdk_major_version }}-openjdk-*"
@@ -118,35 +125,46 @@
 # Other roles may install other versions of Java. This makes the default java executable point to the desired one here.
 - name: switch to java {{ jenkins_node_openjdk_major_version }}
   become: yes
-  alternatives:
+  community.general.alternatives:
     name: java
     link: /usr/bin/java
     path: /usr/lib/jvm/jre-{{ jenkins_node_openjdk_major_version }}-openjdk/bin/java
 
 - name: install python-jenkins
   become: yes
-  pip:
+  ansible.builtin.pip:
     name: python-jenkins
     state: latest
 
-- name: copy node creation script
+- name: copy node creation script (py27)
   become: yes
-  copy:
-    src: create_jenkins_node_jnlp.py
+  ansible.builtin.copy:
+    src: create_jenkins_node_jnlp_py27.py
     dest: "{{ jenkins_node_path }}/create_jenkins_node_jnlp.py"
     owner: "{{ jenkins_node_user }}"
     group: "{{ jenkins_node_user }}"
     mode: 0744
+  when: ansible_distribution == "CentOS" and ansible_distribution_major_version <= '7'
+
+- name: copy node creation script (py3)
+  become: yes
+  ansible.builtin.copy:
+    src: create_jenkins_node_jnlp_py3.py
+    dest: "{{ jenkins_node_path }}/create_jenkins_node_jnlp.py"
+    owner: "{{ jenkins_node_user }}"
+    group: "{{ jenkins_node_user }}"
+    mode: 0744
+  when: ansible_distribution == "CentOS" and ansible_distribution_major_version > '7'
 
 - name: install certifi
   become: yes
-  pip:
+  ansible.builtin.pip:
     name: certifi
     state: latest
 
 - name: copy modify certifi script
   become: yes
-  copy:
+  ansible.builtin.copy:
     src: modify_certifi.py
     dest: "{{ jenkins_node_path }}/modify_certifi.py"
     owner: "{{ jenkins_node_user }}"
@@ -155,34 +173,29 @@
 
 - name: modify certifi if needed
   become: yes
-  command: python {{ jenkins_node_path }}/modify_certifi.py "{{ jenkins_node_master_url }}" "{{ jenkins_node_master_ca_cert }}"
+  ansible.builtin.command: python {{ jenkins_node_path }}/modify_certifi.py "{{ jenkins_node_master_url }}" "{{ jenkins_node_master_ca_cert }}"
 
 - name: add the node config to the jenkins master
-  become_user: "{{ jenkins_node_user }}"
   become: yes
   # To run this script, the user provided has to have Administrator rights in the Jenkins instance because it runs the Script Console.
   # See https://support.cloudbees.com/hc/en-us/articles/222520647-How-to-find-slave-secret-key-
-  command: python {{ jenkins_node_path }}/create_jenkins_node_jnlp.py "{{ jenkins_node_master_url }}" "{{ jenkins_node_master_user }}" "{{ jenkins_node_master_password }}" "{{ jenkins_node_name }}" "{{ jenkins_node_description }}" "{{ jenkins_node_labels }}" "{{ jenkins_node_path }}/node_secret.txt" "--num-executors={{ jenkins_node_executors }}" "--path={{ jenkins_node_path }}"
-  # As of 2017-10-2, Ansible doesn't keep track what values were vaulted. Without no_log, an error would
-  # cause the command to be displayed, which is not desirable.
-  # 2019-12-02: You have two options. Use 'no_log: yes' or use a Jenkins credential object so Jenkins masks the output. I have opted for Jenkins to mask the output
-  # as this is a command that fails often, and I'm tired of having to run the command by hand and removing no_log so I can see the output.
+  ansible.builtin.command: python {{ jenkins_node_path }}/create_jenkins_node_jnlp.py "{{ jenkins_node_master_url }}" "{{ jenkins_node_master_user }}" "{{ jenkins_node_master_password }}" "{{ jenkins_node_name }}" "{{ jenkins_node_description }}" "{{ jenkins_node_labels }}" "{{ jenkins_node_path }}/node_secret.txt" "--num-executors={{ jenkins_node_executors }}" "--path={{ jenkins_node_path }}" "-v"
 
 - name: fetch the node secret from the remote
   become: yes
-  fetch:
+  ansible.builtin.fetch:
     src: "{{ jenkins_node_path }}/node_secret.txt"
     dest: /tmp/fetch-{{ inventory_hostname }}/
     flat: yes
 
 - name: get the node secret
-  set_fact:
+  ansible.builtin.set_fact:
     jenkins_node_secret: "{{ lookup('file', '/tmp/fetch-{{ inventory_hostname }}/node_secret.txt').strip() }}"
   no_log: yes
 
 - name: copy login.sh
   become: yes
-  template:
+  ansible.builtin.template:
     src: login.sh
     dest: /home/{{ jenkins_node_user }}/login.sh
     mode: 0700
@@ -191,18 +204,18 @@
   register: result_copy_login
 
 - name: remove the node secret from localhost
-  file:
+  ansible.builtin.file:
     state: absent
     path: /tmp/fetch-{{ inventory_hostname }}/node_secret.txt
   delegate_to: localhost
 
 # Restart if any of the above pertinent tasks changed.
-- include_tasks: restart.yml
+- ansible.builtin.include_tasks: restart.yml
   when: result_copy_login.changed or result_download_agent_jar.changed or result_auto_login_config.changed or result_auto_login_script.changed
 
 - name: copy node verify script
   become: yes
-  copy:
+  ansible.builtin.copy:
     src: verify_jenkins_node_jnlp.py
     dest: "{{ jenkins_node_path }}/verify_jenkins_node_jnlp.py"
     owner: "{{ jenkins_node_user }}"
@@ -211,7 +224,4 @@
 
 - name: verify that the node is connected
   become: yes
-  become_user: "{{ jenkins_node_user }}"
-  command: python {{ jenkins_node_path }}/verify_jenkins_node_jnlp.py "{{ jenkins_node_master_url }}" "{{ jenkins_node_master_user }}" "{{ jenkins_node_master_password }}" "{{ jenkins_node_name }}"
-  # 2019-12-02: You have two options. Use 'no_log: yes' or use a Jenkins credential object so Jenkins masks the output. I have opted for Jenkins to mask the output
-  # as this is a command that fails often, and I'm tired of having to run the command by hand and removing no_log so I can see the output.
+  ansible.builtin.command: python {{ jenkins_node_path }}/verify_jenkins_node_jnlp.py "{{ jenkins_node_master_url }}" "{{ jenkins_node_master_user }}" "{{ jenkins_node_master_password }}" "{{ jenkins_node_name }}"
